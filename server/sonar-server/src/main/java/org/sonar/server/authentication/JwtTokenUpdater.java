@@ -21,6 +21,8 @@
 package org.sonar.server.authentication;
 
 import io.jsonwebtoken.Claims;
+import java.math.BigInteger;
+import java.security.SecureRandom;
 import java.util.Date;
 import java.util.Optional;
 import javax.annotation.Nullable;
@@ -36,9 +38,12 @@ import org.sonar.api.utils.log.Loggers;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.user.UserDto;
+import org.sonar.server.exceptions.UnauthorizedException;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.Arrays.asList;
+import static org.apache.commons.codec.digest.DigestUtils.sha256Hex;
+import static org.apache.commons.lang.StringUtils.isBlank;
 
 @ServerSide
 public class JwtTokenUpdater {
@@ -46,6 +51,10 @@ public class JwtTokenUpdater {
   private static final Logger LOG = Loggers.get(GenerateJwtTokenFilter.class);
 
   private static final String JWT_COOKIE = "JWT-SESSION";
+
+  private static final String CSRF_COOKIE = "XSRF-TOKEN";
+  private static final String CSRF_JWT_PROPERTY = "xsrfToken";
+  private static final String CSRF_HEADER = "X-XSRF-TOKEN";
 
   // This timeout is used to disconnect the user we he has not browse any page for a while
   private static final int SESSION_TIMEOUT_IN_SECONDS = 20 * 24 * 60 * 60;
@@ -68,13 +77,17 @@ public class JwtTokenUpdater {
   }
 
   void createNewJwtToken(String userLogin, HttpServletResponse response) {
+    String state = new BigInteger(130, new SecureRandom()).toString(32);
+
     String token = jwtToken.encode(JwtToken.Jwt.builder()
       .setUserLogin(userLogin)
       .setExpirationTimeInSeconds(SESSION_TIMEOUT_IN_SECONDS)
+      .addProperty(CSRF_JWT_PROPERTY, state)
       .build());
 
     LOG.trace("Create session for {}", userLogin);
-    response.addCookie(createCookie(JWT_COOKIE, token, SESSION_TIMEOUT_IN_SECONDS));
+    response.addCookie(createCookie(JWT_COOKIE, token, SESSION_TIMEOUT_IN_SECONDS, true));
+    response.addCookie(createCookie(CSRF_COOKIE, sha256Hex(state), SESSION_TIMEOUT_IN_SECONDS, false));
   }
 
   void validateJwtToken(HttpServletRequest request, HttpServletResponse response) {
@@ -91,6 +104,7 @@ public class JwtTokenUpdater {
     Optional<UserDto> user = claims.isPresent() ? getUser(claims.get().getSubject()) : Optional.empty();
     if (claims.isPresent() && user.isPresent()) {
       refreshSession(claims.get(), user.get(), request, response);
+      verifyState(request, (String) claims.get().get(CSRF_JWT_PROPERTY));
     } else {
       removeSession(request, response);
     }
@@ -111,14 +125,15 @@ public class JwtTokenUpdater {
   private void removeSession(HttpServletRequest request, HttpServletResponse response) {
     LOG.trace("Remove session");
     request.getSession().removeAttribute(RAILS_USER_ID_SESSION);
-    response.addCookie(createCookie(JWT_COOKIE, null, 0));
+    response.addCookie(createCookie(JWT_COOKIE, null, 0, true));
+    response.addCookie(createCookie(CSRF_COOKIE, null, 0, false));
   }
 
-  private Cookie createCookie(String name, @Nullable String value, int expiry) {
+  private Cookie createCookie(String name, @Nullable String value, int expiry, boolean httpOnly) {
     Cookie cookie = new Cookie(name, value);
     cookie.setPath(server.getContextPath() + "/");
     cookie.setSecure(server.isSecured());
-    cookie.setHttpOnly(true);
+    cookie.setHttpOnly(httpOnly);
     cookie.setMaxAge(expiry);
     return cookie;
   }
@@ -139,6 +154,19 @@ public class JwtTokenUpdater {
       return Optional.ofNullable(dbClient.userDao().selectActiveUserByLogin(dbSession, userLogin));
     } finally {
       dbClient.closeSession(dbSession);
+    }
+  }
+
+  public void verifyState(HttpServletRequest request, String state) {
+    Optional<Cookie> csrfCookie = findCookie(CSRF_COOKIE, request);
+    if (csrfCookie.isPresent()) {
+      String path = request.getRequestURI().replaceFirst(request.getContextPath(), "");
+      // TODO check only on some WS
+
+      String stateInRequest = request.getParameter(CSRF_HEADER);
+      if (isBlank(stateInRequest) || !sha256Hex(stateInRequest).equals(state)) {
+        throw new UnauthorizedException();
+      }
     }
   }
 }
