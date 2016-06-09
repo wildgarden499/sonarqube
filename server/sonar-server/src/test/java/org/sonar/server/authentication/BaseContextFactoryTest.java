@@ -74,6 +74,6 @@ public class BaseContextFactoryTest {
     when(request.getSession()).thenReturn(session);
 
     context.authenticate(USER_IDENTITY);
-    verify(userIdentityAuthenticator).authenticate(USER_IDENTITY, identityProvider, session);
+    verify(userIdentityAuthenticator).authenticate(USER_IDENTITY, identityProvider, request, response);
   }
 }
