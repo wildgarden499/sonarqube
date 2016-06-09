@@ -127,7 +127,7 @@ public class OAuth2ContextFactoryTest {
 
     callback.authenticate(USER_IDENTITY);
 
-    verify(userIdentityAuthenticator).authenticate(USER_IDENTITY, identityProvider, session);
+    verify(userIdentityAuthenticator).authenticate(USER_IDENTITY, identityProvider, request, response);
   }
 
   @Test
