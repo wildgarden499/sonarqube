@@ -157,12 +157,9 @@ public class JwtTokenUpdater {
     }
   }
 
-  public void verifyState(HttpServletRequest request, String state) {
-    Optional<Cookie> csrfCookie = findCookie(CSRF_COOKIE, request);
-    if (csrfCookie.isPresent()) {
-      String path = request.getRequestURI().replaceFirst(request.getContextPath(), "");
-      // TODO check only on some WS
-
+  void verifyState(HttpServletRequest request, String state) {
+    String path = request.getRequestURI().replaceFirst(request.getContextPath(), "");
+    if (path.contains("/api/issues/bulk_change")) {
       String stateInRequest = request.getParameter(CSRF_HEADER);
       if (isBlank(stateInRequest) || !sha256Hex(stateInRequest).equals(state)) {
         throw new UnauthorizedException();
