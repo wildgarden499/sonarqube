@@ -57,6 +57,7 @@ class SessionsController < ApplicationController
       self.current_user.forget_me
     end
     cookies.delete 'JWT-SESSION'
+    cookies.delete 'XSRF-TOKEN'
     flash[:notice]=message('session.flash_notice.logged_out')
     redirect_to(home_path)
     reset_session

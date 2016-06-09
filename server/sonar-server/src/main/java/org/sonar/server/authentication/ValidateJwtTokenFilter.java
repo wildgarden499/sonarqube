@@ -32,6 +32,7 @@ import org.sonar.api.server.ServerSide;
 import org.sonar.api.utils.log.Logger;
 import org.sonar.api.utils.log.Loggers;
 import org.sonar.api.web.ServletFilter;
+import org.sonar.server.exceptions.UnauthorizedException;
 
 // TODO do not enter here on static resources
 @ServerSide
@@ -58,7 +59,7 @@ public class ValidateJwtTokenFilter extends ServletFilter {
     try {
       jwtTokenUpdater.validateJwtToken(request, response);
       chain.doFilter(request, response);
-    } catch (InvalidTokenException e) {
+    } catch (InvalidTokenException | UnauthorizedException e) {
       LOG.debug("Invalid token", e.getMessage());
       response.setStatus(403);
     }

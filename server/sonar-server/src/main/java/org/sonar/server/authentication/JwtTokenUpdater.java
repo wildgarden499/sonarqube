@@ -54,7 +54,7 @@ public class JwtTokenUpdater {
 
   private static final String CSRF_COOKIE = "XSRF-TOKEN";
   private static final String CSRF_JWT_PROPERTY = "xsrfToken";
-  private static final String CSRF_HEADER = "X-XSRF-TOKEN";
+  private static final String CSRF_HEADER = "x-xsrf-token";
 
   // This timeout is used to disconnect the user we he has not browse any page for a while
   private static final int SESSION_TIMEOUT_IN_SECONDS = 20 * 24 * 60 * 60;
@@ -104,7 +104,6 @@ public class JwtTokenUpdater {
     Optional<UserDto> user = claims.isPresent() ? getUser(claims.get().getSubject()) : Optional.empty();
     if (claims.isPresent() && user.isPresent()) {
       refreshSession(claims.get(), user.get(), request, response);
-      verifyState(request, (String) claims.get().get(CSRF_JWT_PROPERTY));
     } else {
       removeSession(request, response);
     }
@@ -114,6 +113,7 @@ public class JwtTokenUpdater {
     String userLogin = token.getSubject();
     LOG.trace("Validate session of {}", userLogin);
     request.getSession().setAttribute(RAILS_USER_ID_SESSION, user.getId());
+    verifyState(request, (String) token.get(CSRF_JWT_PROPERTY));
 
     Date tokenCreationDatePlusFiveMinutes = DateUtils.addMinutes(token.getIssuedAt(), SESSION_REFRESH_IN_MINUTES);
     if (new Date(system2.now()).after(tokenCreationDatePlusFiveMinutes)) {
@@ -159,10 +159,10 @@ public class JwtTokenUpdater {
 
   void verifyState(HttpServletRequest request, String state) {
     String path = request.getRequestURI().replaceFirst(request.getContextPath(), "");
-    if (path.contains("/api/issues/bulk_change")) {
-      String stateInRequest = request.getParameter(CSRF_HEADER);
-      if (isBlank(stateInRequest) || !sha256Hex(stateInRequest).equals(state)) {
-        throw new UnauthorizedException();
+    if (path.equals("/issues/bulk_change")) {
+      String stateInRequest = request.getHeader(CSRF_HEADER);
+      if (isBlank(stateInRequest) || !sha256Hex(state).equals(stateInRequest)) {
+        throw new UnauthorizedException("Invalid CSRF");
       }
     }
   }
