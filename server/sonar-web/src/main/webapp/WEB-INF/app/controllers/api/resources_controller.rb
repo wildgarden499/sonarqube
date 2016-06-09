@@ -238,10 +238,10 @@ class Api::ResourcesController < Api::ApiController
 
       # ---------- PREPARE RESPONSE
       resource_by_sid={}
-      snapshots_by_rid={}
+      snapshots_by_uuid={}
       snapshots_including_resource.each do |snapshot|
         resource_by_sid[snapshot.id]=snapshot.project
-        snapshots_by_rid[snapshot.project_id]=snapshot
+        snapshots_by_uuid[snapshot.component_uuid]=snapshot
       end
 
 
@@ -259,7 +259,7 @@ class Api::ResourcesController < Api::ApiController
       sorted_resources=sorted_resources.uniq.compact
 
       # ---------- FORMAT RESPONSE
-      objects={:sorted_resources => sorted_resources, :snapshots_by_rid => snapshots_by_rid, :measures_by_sid => measures_by_sid, :params => params, :rules_by_id => rules_by_id}
+      objects={:sorted_resources => sorted_resources, :snapshots_by_uuid => snapshots_by_uuid, :measures_by_sid => measures_by_sid, :params => params, :rules_by_id => rules_by_id}
       respond_to do |format|
         format.json { render :json => jsonp(to_json(objects)) }
         format.xml { render :xml => to_xml(objects) }
@@ -312,14 +312,14 @@ class Api::ResourcesController < Api::ApiController
 
   def to_json(objects)
     resources = objects[:sorted_resources]
-    snapshots_by_rid = objects[:snapshots_by_rid]
+    snapshots_by_uuid = objects[:snapshots_by_uuid]
     measures_by_sid = objects[:measures_by_sid]
     rules_by_id = objects[:rules_by_id]
     params = objects[:params]
 
     result=[]
     resources.each do |resource|
-      snapshot=snapshots_by_rid[resource.id]
+      snapshot=snapshots_by_uuid[resource.uuid]
       result<<resource_to_json(resource, snapshot, measures_by_sid[snapshot.id], rules_by_id, params)
     end
     result

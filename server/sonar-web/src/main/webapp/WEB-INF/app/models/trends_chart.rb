@@ -25,7 +25,7 @@ class TrendsChart
             " from project_measures m LEFT OUTER JOIN snapshots s ON s.id=m.snapshot_id " +
             " where m.rule_id is null " +
             " and s.status=? " +
-            " and s.project_id=? " +
+            " and s.component_uuid=? " +
             " and m.metric_id in (?) " +
             " and m.rule_priority is null and m.person_id is null"
       if (options[:from])
@@ -35,7 +35,7 @@ class TrendsChart
         sql += ' and s.created_at<=?'
       end
       sql += ' order by s.created_at ASC'
-      conditions=[sql, Snapshot::STATUS_PROCESSED, resource.id, metric_ids]
+      conditions=[sql, Snapshot::STATUS_PROCESSED, resource.uuid, metric_ids]
       if (options[:from])
         conditions<<options[:from].to_i*1000
       end
