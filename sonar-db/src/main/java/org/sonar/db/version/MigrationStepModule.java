@@ -84,10 +84,15 @@ import org.sonar.db.version.v55.FeedRulesTypes;
 import org.sonar.db.version.v56.FixLengthOfIssuesMessageOnOracle;
 import org.sonar.db.version.v56.FixTypeOfRuleTypeOnMysql;
 import org.sonar.db.version.v60.AddUuidColumnsToResourceIndex;
+import org.sonar.db.version.v60.AddUuidColumnsToSnapshots;
 import org.sonar.db.version.v60.CleanOrphanRowsInResourceIndex;
+import org.sonar.db.version.v60.CleanOrphanRowsInSnapshots;
 import org.sonar.db.version.v60.DropIdColumnsFromResourceIndex;
+import org.sonar.db.version.v60.DropIdColumnsFromSnapshots;
 import org.sonar.db.version.v60.MakeUuidColumnsNotNullOnResourceIndex;
+import org.sonar.db.version.v60.MakeUuidColumnsNotNullOnSnapshots;
 import org.sonar.db.version.v60.PopulateUuidColumnsOfResourceIndex;
+import org.sonar.db.version.v60.PopulateUuidColumnsOfSnapshots;
 
 public class MigrationStepModule extends Module {
   @Override
@@ -177,6 +182,11 @@ public class MigrationStepModule extends Module {
       PopulateUuidColumnsOfResourceIndex.class,
       CleanOrphanRowsInResourceIndex.class,
       MakeUuidColumnsNotNullOnResourceIndex.class,
-      DropIdColumnsFromResourceIndex.class);
+      DropIdColumnsFromResourceIndex.class,
+      AddUuidColumnsToSnapshots.class,
+      PopulateUuidColumnsOfSnapshots.class,
+      CleanOrphanRowsInSnapshots.class,
+      MakeUuidColumnsNotNullOnSnapshots.class,
+      DropIdColumnsFromSnapshots.class);
   }
 }
