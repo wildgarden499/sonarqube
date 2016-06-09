@@ -17,26 +17,15 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
 package org.sonar.server.authentication;
 
-import org.sonar.core.platform.Module;
-import org.sonar.server.authentication.ws.AuthenticationWs;
+/**
+ * Exception raised when a JWT token is corrupt
+ */
+public class InvalidTokenException extends RuntimeException {
 
-public class AuthenticationModule extends Module {
-  @Override
-  protected void configureModule() {
-    add(
-      AuthenticationWs.class,
-      InitFilter.class,
-      OAuth2CallbackFilter.class,
-      IdentityProviderRepository.class,
-      BaseContextFactory.class,
-      OAuth2ContextFactory.class,
-      UserIdentityAuthenticator.class,
-      CsrfVerifier.class,
-      GenerateJwtTokenFilter.class,
-      ValidateJwtTokenFilter.class,
-      JwtToken.class,
-      JwtTokenUpdater.class);
+  public InvalidTokenException(Throwable cause) {
+    super(cause);
   }
 }
