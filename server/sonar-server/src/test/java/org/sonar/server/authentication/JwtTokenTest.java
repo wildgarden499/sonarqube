@@ -24,14 +24,17 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.impl.DefaultClaims;
 import java.util.Base64;
 import java.util.Date;
+import java.util.Optional;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.sonar.api.config.Settings;
+import org.sonar.api.utils.DateUtils;
 import org.sonar.api.utils.System2;
 import org.sonar.core.util.UuidFactory;
 import org.sonar.core.util.UuidFactoryImpl;
@@ -107,6 +110,7 @@ public class JwtTokenTest {
     String token = underTest.encode(JwtToken.Jwt.builder()
       .setUserLogin(USER_LOGIN)
       .build());
+
     Claims claims = underTest.decode(token).get();
     assertThat(claims.getId()).isNotEmpty();
     assertThat(claims.getSubject()).isEqualTo(USER_LOGIN);
@@ -241,6 +245,50 @@ public class JwtTokenTest {
     underTest.start();
 
     assertThat(settings.getString("sonar.secretKey")).isEqualTo(SECRET_KEY);
+  }
+
+  @Test
+  public void refresh_token() throws Exception {
+    settings.setProperty("sonar.secretKey", SECRET_KEY);
+    underTest.start();
+
+    Date now = new Date();
+    Date createdAt = DateUtils.parseDate("2016-01-01");
+    // Expired in 10 minutes
+    Date expiredAt = new Date(now.getTime() + 10 * 60 * 1000);
+    Claims token = new DefaultClaims()
+      .setId("id")
+      .setSubject("subject")
+      .setIssuedAt(createdAt)
+      .setExpiration(expiredAt);
+    token.put("key", "value");
+
+    // Refresh the token with a higher expiration time
+    String encodedToken = underTest.refresh(token, 20 * 60);
+
+    Claims result = underTest.decode(encodedToken).get();
+    assertThat(result.getId()).isEqualTo("id");
+    assertThat(result.getSubject()).isEqualTo("subject");
+    assertThat(result.getIssuedAt()).isEqualTo(createdAt);
+    assertThat(result.get("key")).isEqualTo("value");
+    // Expiration date has been changed
+    assertThat(result.getExpiration()).isNotEqualTo(expiredAt)
+      .isAfterOrEqualsTo(new Date(now.getTime() + 19 * 1000));
+  }
+
+  @Test
+  public void refresh_token_generate_a_new_hash() throws Exception {
+    settings.setProperty("sonar.secretKey", SECRET_KEY);
+    underTest.start();
+    String token = underTest.encode(JwtToken.Jwt.builder()
+      .setUserLogin(USER_LOGIN)
+      .setExpirationTimeInSeconds(30)
+      .build());
+    Optional<Claims> claims = underTest.decode(token);
+
+    String newToken = underTest.refresh(claims.get(), 45);
+
+    assertThat(newToken).isNotEqualTo(token);
   }
 
   private SecretKey decodeSecretKey(String encodedKey) {

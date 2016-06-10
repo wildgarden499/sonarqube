@@ -39,6 +39,7 @@ import org.sonar.db.user.UserDto;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.Arrays.asList;
+import static java.util.Objects.requireNonNull;
 
 @ServerSide
 public class JwtTokenUpdater {
@@ -46,12 +47,16 @@ public class JwtTokenUpdater {
   private static final Logger LOG = Loggers.get(GenerateJwtTokenFilter.class);
 
   private static final String JWT_COOKIE = "JWT-SESSION";
+  private static final String LAST_REFRESH_TIME_PARAM = "lastRefreshTime";
 
   // This timeout is used to disconnect the user we he has not browse any page for a while
-  private static final int SESSION_TIMEOUT_IN_SECONDS = 20 * 24 * 60 * 60;
+  private static final int SESSION_TIMEOUT_IN_SECONDS = 3 * 24 * 60 * 60;
 
-  // This refresh time is used to generate a new session
-  private static final int SESSION_REFRESH_IN_MINUTES = 5;
+  // Time after which a user will be disconnected
+  private static final int SESSION_DISCONNECT_IN_SECONDS = 3 * 30 * 24 * 60 * 60;
+
+  // This refresh time is used to refresh the session
+  private static final int SESSION_REFRESH_IN_SECONDS = 5 * 60;
 
   private static final String RAILS_USER_ID_SESSION = "user_id";
 
@@ -71,6 +76,7 @@ public class JwtTokenUpdater {
     String token = jwtToken.encode(JwtToken.Jwt.builder()
       .setUserLogin(userLogin)
       .setExpirationTimeInSeconds(SESSION_TIMEOUT_IN_SECONDS)
+      .addProperty(LAST_REFRESH_TIME_PARAM, system2.now())
       .build());
 
     LOG.trace("Create session for {}", userLogin);
@@ -84,28 +90,45 @@ public class JwtTokenUpdater {
     }
   }
 
-  private void validateJwtToken(Cookie jwtCookie, HttpServletRequest request, HttpServletResponse response) {
+  private void validateJwtToken(Cookie jwtCookie, HttpServletRequest request, HttpServletResponse response){
     String value = jwtCookie.getValue();
     checkNotNull(value, "JWT cookie is null");
     Optional<Claims> claims = jwtToken.decode(value);
-    Optional<UserDto> user = claims.isPresent() ? getUser(claims.get().getSubject()) : Optional.empty();
-    if (claims.isPresent() && user.isPresent()) {
-      refreshSession(claims.get(), user.get(), request, response);
-    } else {
+    if (!claims.isPresent()) {
       removeSession(request, response);
+      return;
+    }
+
+    Date now = new Date(system2.now());
+
+    Claims token = claims.get();
+    if (now.after(DateUtils.addSeconds(token.getIssuedAt(), SESSION_DISCONNECT_IN_SECONDS))) {
+      removeSession(request, response);
+      return;
+    }
+
+    Optional<UserDto> user = getUser(claims.get().getSubject());
+    if (!user.isPresent()) {
+      removeSession(request, response);
+      return;
+    }
+
+    request.getSession().setAttribute(RAILS_USER_ID_SESSION, user.get().getId());
+    if (now.after(DateUtils.addSeconds(getLastRefreshDate(token), SESSION_REFRESH_IN_SECONDS))) {
+      refreshToken(user.get(), token, response);
     }
   }
 
-  private void refreshSession(Claims token, UserDto user, HttpServletRequest request, HttpServletResponse response) {
-    String userLogin = token.getSubject();
-    LOG.trace("Validate session of {}", userLogin);
-    request.getSession().setAttribute(RAILS_USER_ID_SESSION, user.getId());
+  private static Date getLastRefreshDate(Claims token){
+    Long lastFreshTime = (Long) token.get(LAST_REFRESH_TIME_PARAM);
+    requireNonNull(lastFreshTime, "last refresh time is missing in token");
+    return new Date(lastFreshTime);
+  }
 
-    Date tokenCreationDatePlusFiveMinutes = DateUtils.addMinutes(token.getIssuedAt(), SESSION_REFRESH_IN_MINUTES);
-    if (new Date(system2.now()).after(tokenCreationDatePlusFiveMinutes)) {
-      LOG.trace("Create new session for {}", userLogin);
-      createNewJwtToken(user.getLogin(), response);
-    }
+  private void refreshToken(UserDto user, Claims token, HttpServletResponse response){
+    LOG.trace("Refresh session for {}", user.getLogin());
+    String refreshToken = jwtToken.refresh(token, SESSION_TIMEOUT_IN_SECONDS);
+    response.addCookie(createCookie(JWT_COOKIE, refreshToken, SESSION_TIMEOUT_IN_SECONDS));
   }
 
   private void removeSession(HttpServletRequest request, HttpServletResponse response) {

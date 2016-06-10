@@ -103,6 +103,17 @@ public class JwtToken implements Startable {
     }
   }
 
+  String refresh(Claims token, int expirationTimeInSeconds){
+    long now = system2.now();
+    JwtBuilder jwtBuilder = Jwts.builder();
+    for (Map.Entry<String, Object> entry : token.entrySet()) {
+      jwtBuilder.claim(entry.getKey(), entry.getValue());
+    }
+    jwtBuilder.setExpiration(new Date(now + expirationTimeInSeconds * 1000))
+      .signWith(SIGNATURE_ALGORITHM, secretKey);
+    return jwtBuilder.compact();
+  }
+
   @Override
   public void start() {
     String encodedKey = settings.getString(SECRET_KEY_PROPERTY);

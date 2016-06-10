@@ -21,6 +21,7 @@
 package org.sonar.server.authentication;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.impl.DefaultClaims;
 import java.util.Date;
 import java.util.Optional;
 import javax.annotation.Nullable;
@@ -28,7 +29,6 @@ import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import org.apache.commons.lang.time.DateUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -45,6 +45,8 @@ import org.sonar.server.tester.UserSessionRule;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -57,7 +59,10 @@ public class JwtTokenUpdaterTest {
   static final String JWT_TOKEN = "TOKEN";
   static final String USER_LOGIN = "john";
 
-  static final long NOW = 1_000_000_000L;
+  static final long NOW = 10_000_000_000L;
+  static final long FOUR_MINUTES_AGO = NOW - 4 * 60 * 1000L;
+  static final long SIX_MINUTES_AGO = NOW - 6 * 60 * 1000L;
+  static final long TEN_DAYS_AGO = NOW - 10 * 24 * 60 * 60 * 1000L;
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -73,6 +78,7 @@ public class JwtTokenUpdaterTest {
   DbSession dbSession = dbTester.getSession();
 
   ArgumentCaptor<Cookie> cookieArgumentCaptor = ArgumentCaptor.forClass(Cookie.class);
+  ArgumentCaptor<JwtToken.Jwt> jwtArgumentCaptor = ArgumentCaptor.forClass(JwtToken.Jwt.class);
 
   HttpServletRequest request = mock(HttpServletRequest.class);
   HttpServletResponse response = mock(HttpServletResponse.class);
@@ -99,8 +105,10 @@ public class JwtTokenUpdaterTest {
 
     Optional<Cookie> jwtCookie = findCookie("JWT-SESSION");
     assertThat(jwtCookie).isPresent();
+    verifyCookie(jwtCookie.get(), JWT_TOKEN, 3 * 24 * 60 * 60);
 
-    verifyCookie(jwtCookie.get(), JWT_TOKEN, 20 * 24 * 60 * 60);
+    verify(jwtToken).encode(jwtArgumentCaptor.capture());
+    verifyToken(jwtArgumentCaptor.getValue(), 3 * 24 * 60 * 60, NOW);
   }
 
   @Test
@@ -108,7 +116,7 @@ public class JwtTokenUpdaterTest {
     addJwtCookie();
     UserDto user = addUser();
 
-    Claims claims = createToken(new Date(NOW));
+    Claims claims = createToken(NOW);
     when(jwtToken.decode(JWT_TOKEN)).thenReturn(Optional.of(claims));
 
     underTest.validateJwtToken(request, response);
@@ -118,50 +126,70 @@ public class JwtTokenUpdaterTest {
   }
 
   @Test
-  public void validate_refresh_session_when_refresh_time_is_reached() throws Exception {
+  public void refresh_session_when_refresh_time_is_reached() throws Exception {
     addJwtCookie();
     UserDto user = addUser();
 
-    // Token was created 6 minutes ago
-    Claims claims = createToken(DateUtils.addMinutes(new Date(NOW), -6));
+    // Token was created 10 days ago and refreshed 6 minutes ago
+    Claims claims = createToken(TEN_DAYS_AGO);
+    claims.put("lastRefreshTime", SIX_MINUTES_AGO);
     when(jwtToken.decode(JWT_TOKEN)).thenReturn(Optional.of(claims));
 
     underTest.validateJwtToken(request, response);
 
     verify(httpSession).setAttribute("user_id", user.getId());
-    verify(jwtToken).encode(any(JwtToken.Jwt.class));
+    verify(jwtToken).refresh(any(Claims.class), eq(3 * 24 * 60 * 60));
   }
 
   @Test
-  public void validate_does_not_refresh_session_when_refresh_time_is_not_reached() throws Exception {
+  public void does_not_refresh_session_when_refresh_time_is_not_reached() throws Exception {
     addJwtCookie();
     UserDto user = addUser();
 
-    // Token was created 4 minutes ago
-    Claims claims = createToken(DateUtils.addMinutes(new Date(NOW), -4));
+    // Token was created 10 days ago and refreshed 4 minutes ago
+    Claims claims = createToken(TEN_DAYS_AGO);
+    claims.put("lastRefreshTime", FOUR_MINUTES_AGO);
     when(jwtToken.decode(JWT_TOKEN)).thenReturn(Optional.of(claims));
 
     underTest.validateJwtToken(request, response);
 
     verify(httpSession).setAttribute("user_id", user.getId());
-    verify(jwtToken, never()).encode(any(JwtToken.Jwt.class));
+    verify(jwtToken, never()).refresh(any(Claims.class), anyInt());
   }
 
   @Test
-  public void validate_remove_session_when_user_is_disabled() throws Exception {
+  public void remove_session_when_disconnected_timeout_is_reached() throws Exception {
     addJwtCookie();
-    addUser(false);
+    addUser();
 
-    Claims claims = createToken(new Date(NOW));
+    // Token was created 4 months ago, refreshed 4 minutes ago, and it expired in 5 minutes
+    Claims claims = createToken(NOW);
+    claims.setExpiration(new Date(NOW + 5 * 60 * 1000));
+    claims.put("lastRefreshTime", FOUR_MINUTES_AGO);
     when(jwtToken.decode(JWT_TOKEN)).thenReturn(Optional.of(claims));
 
     underTest.validateJwtToken(request, response);
+
     verify(httpSession).removeAttribute("user_id");
     verifyCookie(findCookie("JWT-SESSION").get(), null, 0);
   }
 
   @Test
-  public void validate_remove_session_when_token_is_no_more_valid() throws Exception {
+  public void remove_session_when_user_is_disabled() throws Exception {
+    addJwtCookie();
+    addUser(false);
+
+    Claims claims = createToken(NOW);
+    when(jwtToken.decode(JWT_TOKEN)).thenReturn(Optional.of(claims));
+
+    underTest.validateJwtToken(request, response);
+
+    verify(httpSession).removeAttribute("user_id");
+    verifyCookie(findCookie("JWT-SESSION").get(), null, 0);
+  }
+
+  @Test
+  public void remove_session_when_token_is_no_more_valid() throws Exception {
     addJwtCookie();
 
     when(jwtToken.decode(JWT_TOKEN)).thenReturn(Optional.empty());
@@ -173,10 +201,16 @@ public class JwtTokenUpdaterTest {
   }
 
   @Test
-  public void validate_does_nothing_when_no_jwt_cookie() throws Exception {
+  public void does_nothing_when_no_jwt_cookie() throws Exception {
     underTest.validateJwtToken(request, response);
 
     verifyZeroInteractions(httpSession, jwtToken);
+  }
+
+  private void verifyToken(JwtToken.Jwt token, int expectedExpirationTime, long expectedRefreshTime){
+    assertThat(token.getExpirationTimeInSeconds()).isEqualTo(expectedExpirationTime);
+    assertThat(token.getUserLogin()).isEqualTo(USER_LOGIN);
+    assertThat(token.getProperties().get("lastRefreshTime")).isEqualTo(expectedRefreshTime);
   }
 
   private Optional<Cookie> findCookie(String name) {
@@ -213,10 +247,18 @@ public class JwtTokenUpdaterTest {
     return cookie;
   }
 
-  private Claims createToken(Date createdAt) {
-    Claims claims = mock(Claims.class);
-    when(claims.getSubject()).thenReturn(USER_LOGIN);
-    when(claims.getIssuedAt()).thenReturn(createdAt);
+  private Claims createToken(long createdAt) {
+    // Expired in 5 minutes by default
+    return createToken(createdAt, NOW + 5 * 60 * 1000);
+  }
+
+  private Claims createToken(long createdAt, long expiredAt) {
+    DefaultClaims claims = new DefaultClaims();
+    claims.setId("ID");
+    claims.setSubject(USER_LOGIN);
+    claims.setIssuedAt(new Date(createdAt));
+    claims.setExpiration(new Date(expiredAt));
+    claims.put("lastRefreshTime", createdAt);
     return claims;
   }
 }
