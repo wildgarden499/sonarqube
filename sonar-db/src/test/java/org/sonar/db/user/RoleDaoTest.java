@@ -19,6 +19,7 @@
  */
 package org.sonar.db.user;
 
+import java.util.List;
 import org.junit.Rule;
 import org.junit.Test;
 import org.sonar.api.security.DefaultGroups;
@@ -26,15 +27,18 @@ import org.sonar.api.utils.System2;
 import org.sonar.api.web.UserRole;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
+import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+import static org.assertj.core.api.Assertions.tuple;
 
 public class RoleDaoTest {
 
   @Rule
   public DbTester db = DbTester.create(System2.INSTANCE);
+  DbClient dbClient = db.getDbClient();
+  DbSession dbSession = db.getSession();
 
   RoleDao underTest = db.getDbClient().roleDao();
 
@@ -52,6 +56,25 @@ public class RoleDaoTest {
 
     assertThat(underTest.selectUserPermissions(db.getSession(), "admin_user", 1L)).containsOnly(UserRole.ADMIN, UserRole.USER);
     assertThat(underTest.selectUserPermissions(db.getSession(), "browse_admin_user", 1L)).containsOnly(UserRole.USER);
+  }
+
+  @Test
+  public void select_user_permissions_by_permission_and_user_id() {
+    underTest.insertUserRole(dbSession, new UserRoleDto().setRole(UserRole.ADMIN).setUserId(1L).setResourceId(2L));
+    underTest.insertUserRole(dbSession, new UserRoleDto().setRole(UserRole.ADMIN).setUserId(1L).setResourceId(3L));
+    // global permission - not returned
+    underTest.insertUserRole(dbSession, new UserRoleDto().setRole(UserRole.ADMIN).setUserId(1L).setResourceId(null));
+    // project permission on another user id - not returned
+    underTest.insertUserRole(dbSession, new UserRoleDto().setRole(UserRole.ADMIN).setUserId(42L).setResourceId(2L));
+    // project permission on another permission - not returned
+    underTest.insertUserRole(dbSession, new UserRoleDto().setRole(GlobalPermissions.SCAN_EXECUTION).setUserId(1L).setResourceId(2L));
+    db.commit();
+
+    List<UserRoleDto> result = underTest.selectUserPermissionsByPermissionAndUserId(dbSession, UserRole.ADMIN, 1L);
+
+    assertThat(result).hasSize(2);
+    assertThat(result).extracting(UserRoleDto::getRole, UserRoleDto::getUserId, UserRoleDto::getResourceId)
+      .containsOnly(tuple(UserRole.ADMIN, 1L, 2L), tuple(UserRole.ADMIN, 1L, 3L));
   }
 
   @Test

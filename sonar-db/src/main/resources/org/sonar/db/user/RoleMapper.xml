@@ -20,6 +20,24 @@
     </where>
   </select>
 
+  <select id="selectUserPermissionsByPermissionAndUserId" parameterType="map" resultType="UserRole">
+    SELECT <include refid="userColumns" />
+    FROM user_roles ur
+    <where>
+      AND ur.user_id = #{userId}
+      AND ur.role = #{permission}
+      AND ur.resource_id IS NOT NULL
+    </where>
+    ORDER by id
+  </select>
+
+  <sql id="userColumns">
+    ur.id,
+    ur.user_id as userId,
+    ur.resource_id as resourceId,
+    ur.role as role
+  </sql>
+
   <select id="selectGroupPermissions" parameterType="map" resultType="String">
     SELECT gr.role
     FROM group_roles gr

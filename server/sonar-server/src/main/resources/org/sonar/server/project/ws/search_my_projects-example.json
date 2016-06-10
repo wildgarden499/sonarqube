@@ -1,0 +1,32 @@
+{
+  "projects": [
+    {
+      "id": "0bd7b1e7-91d6-439e-a607-4a3a9aad3c6a",
+      "key": "net.java.openjdk:jdk7",
+      "name": "JDK 7",
+      "description": "JDK",
+      "lastAnalysisDate": "2016-06-10T13:17:53+0000",
+      "qualityGate": "ERROR",
+      "links": [
+        {
+          "name": "Home",
+          "type": "homepage",
+          "href": "http://www.oracle.com"
+        },
+        {
+          "name": "Sources",
+          "type": "scm",
+          "href": "http://download.java.net/openjdk/jdk8/"
+        }
+      ]
+    },
+    {
+      "id": "ce4c03d6-430f-40a9-b777-ad877c00aa4d",
+      "key": "clang",
+      "name": "Clang",
+      "lastAnalysisDate": "2016-06-11T14:25:53+0000",
+      "qualityGate": "OK",
+      "links": []
+    }
+  ]
+}

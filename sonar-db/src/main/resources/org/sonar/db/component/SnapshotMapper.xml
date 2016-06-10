@@ -42,7 +42,7 @@
 
   <select id="selectByKey" parameterType="Long" resultType="Snapshot">
     SELECT
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     FROM snapshots s
     <where>
       AND s.id=#{key}
@@ -51,7 +51,7 @@
 
   <select id="selectByIds" parameterType="Long" resultType="Snapshot">
     SELECT
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     FROM snapshots s
     WHERE
     s.id in
@@ -62,9 +62,22 @@
 
   <select id="selectLastSnapshot" resultType="Snapshot">
     select
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     from snapshots s
     where s.islast=${_true} and s.project_id = #{resource}
+  </select>
+
+  <select id="selectLastSnapshotByComponentIds" resultType="Snapshot">
+    select
+    <include refid="snapshotColumns" />
+    from snapshots s
+    <where>
+      and s.islast=${_true}
+      and s.project_id in
+      <foreach collection="componentIds" item="componentId" separator="," open="(" close=")">
+        #{componentId}
+      </foreach>
+    </where>
   </select>
 
   <select id="countLastSnapshotByComponentUuid" resultType="Integer">
@@ -78,7 +91,7 @@
 
   <select id="selectSnapshotsByQuery" parameterType="map" resultType="Snapshot">
     SELECT
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     FROM snapshots s
     <if test="query.componentUuid != null">
       INNER JOIN projects p ON p.id=s.project_id AND p.uuid=#{query.componentUuid} AND p.enabled=${_true}
@@ -125,7 +138,7 @@
 
   <select id="selectPreviousVersionSnapshots" parameterType="map" resultType="Snapshot">
     SELECT
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     FROM snapshots s
     INNER JOIN events e ON s.id = e.snapshot_id AND e.name &lt;&gt; #{lastVersion} AND e.category='Version'
     <where>
@@ -136,7 +149,7 @@
 
   <select id="selectOldestSnapshots" parameterType="map" resultType="Snapshot">
     SELECT
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     FROM snapshots s
     <where>
       s.project_id=#{componentId}
@@ -146,7 +159,7 @@
 
   <select id="selectSnapshotAndChildrenOfScope" parameterType="map" resultType="Snapshot">
     select
-    <include refid="snapshotColumns"/>
+    <include refid="snapshotColumns" />
     from snapshots s
     where s.scope = #{scope}
     AND (s.id = #{snapshot} or s.root_snapshot_id = #{snapshot})
@@ -154,7 +167,7 @@
 
   <select id="selectSnapshotBefore" resultType="ViewsSnapshot">
     SELECT
-    <include refid="viewsSnapshotColumns"/>
+    <include refid="viewsSnapshotColumns" />
     FROM snapshots s
     <where>
       and s.project_id = #{componentId}
@@ -166,7 +179,7 @@
 
   <select id="selectLatestSnapshot" resultType="ViewsSnapshot">
     SELECT
-    <include refid="viewsSnapshotColumns"/>
+    <include refid="viewsSnapshotColumns" />
     FROM snapshots s
     <where>
       and s.project_id = #{componentId}
@@ -197,7 +210,7 @@
 
   <insert id="insert" parameterType="Snapshot" keyColumn="id" useGeneratedKeys="true" keyProperty="id">
     insert into snapshots
-    <include refid="insertColumns"/>
+    <include refid="insertColumns" />
     values (#{parentId}, #{rootId}, #{rootProjectId}, #{componentId}, #{createdAt}, #{buildDate}, #{status},
     #{purgeStatus}, #{last}, #{scope}, #{qualifier}, #{version}, #{path}, #{depth},
     #{period1Mode}, #{period2Mode}, #{period3Mode}, #{period4Mode}, #{period5Mode},
