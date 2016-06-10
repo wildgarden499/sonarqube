@@ -85,18 +85,30 @@ import static java.util.Objects.requireNonNull;
 public interface Plugin {
 
   class Context {
-    private final Version version;
+    private final Version runtimeApiVersion;
     private final List extensions = new ArrayList();
+    private boolean enabledInSonarLint = false;
+    private final boolean sonarlintRuntime;
 
-    public Context(Version version) {
-      this.version = version;
+    public Context(Version runtimeApiVersion, boolean sonarlintRuntime) {
+      this.runtimeApiVersion = runtimeApiVersion;
+      this.sonarlintRuntime = sonarlintRuntime;
     }
 
     /**
-     * Runtime version of SonarQube
+     * @deprecated since 6.0
      */
+    @Deprecated
     public Version getSonarQubeVersion() {
-      return version;
+      return runtimeApiVersion;
+    }
+
+    /**
+     * Runtime API version. Can be use to conditionnaly add some extensions.
+     * @since 6.0
+     */
+    public Version getRuntimeApiVersion() {
+      return runtimeApiVersion;
     }
 
     /**
@@ -140,6 +152,30 @@ public interface Plugin {
 
     public List getExtensions() {
       return extensions;
+    }
+
+    /**
+     * @since 6.0
+     */
+    public boolean isEnabledInSonarLint() {
+      return enabledInSonarLint;
+    }
+
+    /**
+     * Declare this plugin as compatible with SonarLint.
+     * @since 6.0
+     */
+    public Context enableInSonarLint() {
+      this.enabledInSonarLint = true;
+      return this;
+    }
+
+    /**
+     * Test if plugin is currently executed in SonarLint. Can be use to conditionnaly add some extensions.
+     * @since 6.0
+     */
+    public boolean isSonarlintRuntime() {
+      return sonarlintRuntime;
     }
   }
 
