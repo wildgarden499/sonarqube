@@ -20,6 +20,7 @@
 
 package org.sonar.server.authentication;
 
+import com.google.common.collect.ImmutableMap;
 import io.jsonwebtoken.Claims;
 import java.util.Date;
 import java.util.Optional;
@@ -37,12 +38,12 @@ import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.user.UserDto;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
+import static org.elasticsearch.common.Strings.isNullOrEmpty;
 
 @ServerSide
-public class JwtTokenUpdater {
+public class JwtHttpHandler {
 
   private static final Logger LOG = Loggers.get(GenerateJwtTokenFilter.class);
 
@@ -56,6 +57,7 @@ public class JwtTokenUpdater {
   private static final int SESSION_DISCONNECT_IN_SECONDS = 3 * 30 * 24 * 60 * 60;
 
   // This refresh time is used to refresh the session
+  // The value must be lower than SESSION_TIMEOUT_IN_SECONDS
   private static final int SESSION_REFRESH_IN_SECONDS = 5 * 60;
 
   private static final String RAILS_USER_ID_SESSION = "user_id";
@@ -63,37 +65,38 @@ public class JwtTokenUpdater {
   private final System2 system2;
   private final DbClient dbClient;
   private final Server server;
-  private final JwtToken jwtToken;
+  private final JwtSerializer jwtSerializer;
 
-  public JwtTokenUpdater(System2 system2, DbClient dbClient, Server server, JwtToken jwtToken) {
-    this.jwtToken = jwtToken;
+  public JwtHttpHandler(System2 system2, DbClient dbClient, Server server, JwtSerializer jwtSerializer) {
+    this.jwtSerializer = jwtSerializer;
     this.server = server;
     this.dbClient = dbClient;
     this.system2 = system2;
   }
 
-  void createNewJwtToken(String userLogin, HttpServletResponse response) {
-    String token = jwtToken.encode(JwtToken.Jwt.builder()
-      .setUserLogin(userLogin)
-      .setExpirationTimeInSeconds(SESSION_TIMEOUT_IN_SECONDS)
-      .addProperty(LAST_REFRESH_TIME_PARAM, system2.now())
-      .build());
+  void generateToken(String userLogin, HttpServletResponse response) {
+    String token = jwtSerializer.encode(new JwtSerializer.JwtSession(
+      userLogin,
+      SESSION_TIMEOUT_IN_SECONDS,
+      ImmutableMap.of(LAST_REFRESH_TIME_PARAM, system2.now())));
 
     LOG.trace("Create session for {}", userLogin);
     response.addCookie(createCookie(JWT_COOKIE, token, SESSION_TIMEOUT_IN_SECONDS));
   }
 
-  void validateJwtToken(HttpServletRequest request, HttpServletResponse response) {
+  void validateToken(HttpServletRequest request, HttpServletResponse response) {
     Optional<Cookie> jwtCookie = findCookie(JWT_COOKIE, request);
     if (jwtCookie.isPresent()) {
-      validateJwtToken(jwtCookie.get(), request, response);
+      Cookie cookie = jwtCookie.get();
+      String token = cookie.getValue();
+      if (!isNullOrEmpty(token)) {
+        validateToken(token, request, response);
+      }
     }
   }
 
-  private void validateJwtToken(Cookie jwtCookie, HttpServletRequest request, HttpServletResponse response){
-    String value = jwtCookie.getValue();
-    checkNotNull(value, "JWT cookie is null");
-    Optional<Claims> claims = jwtToken.decode(value);
+  private void validateToken(String tokenEncoded, HttpServletRequest request, HttpServletResponse response) {
+    Optional<Claims> claims = jwtSerializer.decode(tokenEncoded);
     if (!claims.isPresent()) {
       removeSession(request, response);
       return;
@@ -119,15 +122,15 @@ public class JwtTokenUpdater {
     }
   }
 
-  private static Date getLastRefreshDate(Claims token){
+  private static Date getLastRefreshDate(Claims token) {
     Long lastFreshTime = (Long) token.get(LAST_REFRESH_TIME_PARAM);
     requireNonNull(lastFreshTime, "last refresh time is missing in token");
     return new Date(lastFreshTime);
   }
 
-  private void refreshToken(UserDto user, Claims token, HttpServletResponse response){
+  private void refreshToken(UserDto user, Claims token, HttpServletResponse response) {
     LOG.trace("Refresh session for {}", user.getLogin());
-    String refreshToken = jwtToken.refresh(token, SESSION_TIMEOUT_IN_SECONDS);
+    String refreshToken = jwtSerializer.refresh(token, SESSION_TIMEOUT_IN_SECONDS);
     response.addCookie(createCookie(JWT_COOKIE, refreshToken, SESSION_TIMEOUT_IN_SECONDS));
   }
 
@@ -137,12 +140,12 @@ public class JwtTokenUpdater {
     response.addCookie(createCookie(JWT_COOKIE, null, 0));
   }
 
-  private Cookie createCookie(String name, @Nullable String value, int expiry) {
+  private Cookie createCookie(String name, @Nullable String value, int expirationInSeconds) {
     Cookie cookie = new Cookie(name, value);
     cookie.setPath(server.getContextPath() + "/");
     cookie.setSecure(server.isSecured());
     cookie.setHttpOnly(true);
-    cookie.setMaxAge(expiry);
+    cookie.setMaxAge(expirationInSeconds);
     return cookie;
   }
 

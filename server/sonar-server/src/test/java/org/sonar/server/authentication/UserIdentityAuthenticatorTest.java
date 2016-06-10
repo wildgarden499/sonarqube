@@ -84,7 +84,7 @@ public class UserIdentityAuthenticatorTest {
   UserDao userDao = dbClient.userDao();
   GroupDao groupDao = dbClient.groupDao();
   Settings settings = new Settings();
-  JwtTokenUpdater jwtTokenUpdater = mock(JwtTokenUpdater.class);
+  JwtHttpHandler jwtHttpHandler = mock(JwtHttpHandler.class);
 
   HttpServletRequest request = mock(HttpServletRequest.class);
   HttpServletResponse response = mock(HttpServletResponse.class);
@@ -98,7 +98,7 @@ public class UserIdentityAuthenticatorTest {
     system2
     );
 
-  UserIdentityAuthenticator underTest = new UserIdentityAuthenticator(dbClient, userUpdater, jwtTokenUpdater);
+  UserIdentityAuthenticator underTest = new UserIdentityAuthenticator(dbClient, userUpdater, jwtHttpHandler);
 
   @Before
   public void setUp() throws Exception {
@@ -293,7 +293,7 @@ public class UserIdentityAuthenticatorTest {
     underTest.authenticate(USER_IDENTITY, IDENTITY_PROVIDER, request, response);
 
     verify(httpSession).setAttribute("user_id", userDto.getId());
-    verify(jwtTokenUpdater).createNewJwtToken(USER_LOGIN, response);
+    verify(jwtHttpHandler).generateToken(USER_LOGIN, response);
   }
 
   @Test

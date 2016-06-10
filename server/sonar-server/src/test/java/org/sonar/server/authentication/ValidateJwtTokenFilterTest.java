@@ -25,6 +25,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.junit.Before;
 import org.junit.Test;
+import org.sonar.server.exceptions.ForbiddenException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
@@ -39,9 +40,9 @@ public class ValidateJwtTokenFilterTest {
   HttpServletResponse response = mock(HttpServletResponse.class);
   FilterChain chain = mock(FilterChain.class);
 
-  JwtTokenUpdater jwtTokenUpdater = mock(JwtTokenUpdater.class);
+  JwtHttpHandler jwtHttpHandler = mock(JwtHttpHandler.class);
 
-  ValidateJwtTokenFilter underTest = new ValidateJwtTokenFilter(jwtTokenUpdater);
+  ValidateJwtTokenFilter underTest = new ValidateJwtTokenFilter(jwtHttpHandler);
 
   @Before
   public void setUp() throws Exception {
@@ -58,13 +59,13 @@ public class ValidateJwtTokenFilterTest {
   public void validate_session() throws Exception {
     underTest.doFilter(request, response, chain);
 
-    verify(jwtTokenUpdater).validateJwtToken(request, response);
+    verify(jwtHttpHandler).validateToken(request, response);
     verify(chain).doFilter(request, response);
   }
 
   @Test
   public void return_code_403_when_invalid_token_exception() throws Exception {
-    doThrow(InvalidTokenException.class).when(jwtTokenUpdater).validateJwtToken(request, response);
+    doThrow(new ForbiddenException("invalid token")).when(jwtHttpHandler).validateToken(request, response);
 
     underTest.doFilter(request, response, chain);
 

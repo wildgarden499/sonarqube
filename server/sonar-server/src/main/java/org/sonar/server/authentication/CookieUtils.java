@@ -20,12 +20,24 @@
 
 package org.sonar.server.authentication;
 
-/**
- * Exception raised when a JWT token is corrupt
- */
-public class InvalidTokenException extends RuntimeException {
+import java.util.Arrays;
+import java.util.Optional;
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
 
-  public InvalidTokenException(Throwable cause) {
-    super(cause);
+public class CookieUtils {
+
+  private CookieUtils() {
+    // Only static methods
+  }
+
+  public static Optional<Cookie> findCookie(String cookieName, HttpServletRequest request) {
+    Cookie[] cookies = request.getCookies();
+    if (cookies == null) {
+      return Optional.empty();
+    }
+    return Arrays.stream(cookies)
+      .filter(cookie -> cookieName.equals(cookie.getName()))
+      .findFirst();
   }
 }

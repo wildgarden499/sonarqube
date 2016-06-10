@@ -36,20 +36,19 @@ import javax.servlet.http.HttpServletResponseWrapper;
 import org.sonar.api.web.ServletFilter;
 import org.sonar.server.user.UserSession;
 
-import static org.jboss.netty.handler.codec.http.HttpMethod.POST;
-
 /**
- * This filter should only be executed on "/sessions/login".
- *
- * It will create a new session when user is authenticated.
+ * This filter creates web session when user authenticates on URL "/sessions/login".
+ * The generated session is server stateless.
  */
 public class GenerateJwtTokenFilter extends ServletFilter {
 
-  private final JwtTokenUpdater jwtTokenUpdater;
+  private static final String POST = "POST";
+
+  private final JwtHttpHandler jwtHttpHandler;
   private final UserSession userSession;
 
-  public GenerateJwtTokenFilter(JwtTokenUpdater jwtTokenUpdater, UserSession userSession) {
-    this.jwtTokenUpdater = jwtTokenUpdater;
+  public GenerateJwtTokenFilter(JwtHttpHandler jwtHttpHandler, UserSession userSession) {
+    this.jwtHttpHandler = jwtHttpHandler;
     this.userSession = userSession;
   }
 
@@ -63,11 +62,11 @@ public class GenerateJwtTokenFilter extends ServletFilter {
     HttpServletRequest request = (HttpServletRequest) servletRequest;
     HttpServletResponse response = (HttpServletResponse) servletResponse;
 
-    if (request.getMethod().equals(POST.getName())) {
+    if (request.getMethod().equals(POST)) {
       BufferResponseWrapper wrapper = new BufferResponseWrapper(response);
       chain.doFilter(request, wrapper);
       if (userSession.isLoggedIn()) {
-        jwtTokenUpdater.createNewJwtToken(userSession.getLogin(), response);
+        jwtHttpHandler.generateToken(userSession.getLogin(), response);
       }
       response.getOutputStream().write(wrapper.getWrapperBytes());
     } else {

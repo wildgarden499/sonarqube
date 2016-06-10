@@ -54,12 +54,12 @@ public class UserIdentityAuthenticator {
 
   private final DbClient dbClient;
   private final UserUpdater userUpdater;
-  private final JwtTokenUpdater jwtTokenUpdater;
+  private final JwtHttpHandler jwtHttpHandler;
 
-  public UserIdentityAuthenticator(DbClient dbClient, UserUpdater userUpdater, JwtTokenUpdater jwtTokenUpdater) {
+  public UserIdentityAuthenticator(DbClient dbClient, UserUpdater userUpdater, JwtHttpHandler jwtHttpHandler) {
     this.dbClient = dbClient;
     this.userUpdater = userUpdater;
-    this.jwtTokenUpdater = jwtTokenUpdater;
+    this.jwtHttpHandler = jwtHttpHandler;
   }
 
   public void authenticate(UserIdentity user, IdentityProvider provider, HttpServletRequest request, HttpServletResponse response) {
@@ -67,7 +67,7 @@ public class UserIdentityAuthenticator {
 
     // hack to disable Ruby on Rails authentication
     request.getSession().setAttribute("user_id", userDb.getId());
-    jwtTokenUpdater.createNewJwtToken(userDb.getLogin(), response);
+    jwtHttpHandler.generateToken(userDb.getLogin(), response);
   }
 
   private UserDto register(UserIdentity user, IdentityProvider provider) {

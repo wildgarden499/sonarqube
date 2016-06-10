@@ -50,9 +50,9 @@ public class GenerateJwtTokenFilterTest {
   HttpServletResponse response = mock(HttpServletResponse.class);
   FilterChain chain = mock(FilterChain.class);
 
-  JwtTokenUpdater jwtTokenUpdater = mock(JwtTokenUpdater.class);
+  JwtHttpHandler jwtHttpHandler = mock(JwtHttpHandler.class);
 
-  GenerateJwtTokenFilter underTest = new GenerateJwtTokenFilter(jwtTokenUpdater, userSession);
+  GenerateJwtTokenFilter underTest = new GenerateJwtTokenFilter(jwtHttpHandler, userSession);
 
   @Before
   public void setUp() throws Exception {
@@ -71,7 +71,7 @@ public class GenerateJwtTokenFilterTest {
 
     underTest.doFilter(request, response, chain);
 
-    verify(jwtTokenUpdater).createNewJwtToken("john", response);
+    verify(jwtHttpHandler).generateToken("john", response);
   }
 
   @Test
@@ -81,7 +81,7 @@ public class GenerateJwtTokenFilterTest {
 
     underTest.doFilter(request, response, chain);
 
-    verifyZeroInteractions(jwtTokenUpdater);
+    verifyZeroInteractions(jwtHttpHandler);
   }
 
   @Test
@@ -91,7 +91,7 @@ public class GenerateJwtTokenFilterTest {
 
     underTest.doFilter(request, response, chain);
 
-    verifyZeroInteractions(jwtTokenUpdater);
+    verifyZeroInteractions(jwtHttpHandler);
   }
 
   private void executePostRequest() {

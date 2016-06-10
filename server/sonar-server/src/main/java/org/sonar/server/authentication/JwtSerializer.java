@@ -26,35 +26,33 @@ import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.SignatureException;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import javax.crypto.KeyGenerator;
+import javax.annotation.concurrent.Immutable;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.sonar.api.Startable;
 import org.sonar.api.config.Settings;
 import org.sonar.api.server.ServerSide;
 import org.sonar.api.utils.System2;
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
 import org.sonar.core.util.UuidFactory;
+import org.sonar.server.exceptions.ForbiddenException;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static io.jsonwebtoken.impl.crypto.MacProvider.generateKey;
+import static java.util.Objects.requireNonNull;
 
 /**
  * This class can be used to encode or decode a JWT token
  */
 @ServerSide
-public class JwtToken implements Startable {
+public class JwtSerializer implements Startable {
 
-  private static final Logger LOG = Loggers.get(JwtToken.class);
-
-  private static final String SECRET_KEY_PROPERTY = "sonar.secretKey";
+  private static final String SECRET_KEY_PROPERTY = "sonar.jwt.base64hs256secretKey";
+  private static final String ISSUER = "sonarqube";
 
   private static final SignatureAlgorithm SIGNATURE_ALGORITHM = SignatureAlgorithm.HS256;
 
@@ -64,54 +62,10 @@ public class JwtToken implements Startable {
 
   private SecretKey secretKey;
 
-  public JwtToken(Settings settings, System2 system2, UuidFactory uuidFactory) {
+  public JwtSerializer(Settings settings, System2 system2, UuidFactory uuidFactory) {
     this.settings = settings;
     this.system2 = system2;
     this.uuidFactory = uuidFactory;
-  }
-
-  String encode(Jwt jwt) {
-    long now = system2.now();
-    JwtBuilder jwtBuilder = Jwts.builder()
-      .setId(uuidFactory.create())
-      .setSubject(jwt.getUserLogin())
-      .setIssuedAt(new Date(now))
-      .setExpiration(new Date(now + jwt.getExpirationTimeInSeconds() * 1000))
-      .signWith(SIGNATURE_ALGORITHM, secretKey);
-    for (Map.Entry<String, Object> entry : jwt.getProperties().entrySet()) {
-      jwtBuilder.claim(entry.getKey(), entry.getValue());
-    }
-    return jwtBuilder.compact();
-  }
-
-  Optional<Claims> decode(String token) {
-    try {
-      Claims claims = Jwts.parser()
-        .setSigningKey(secretKey)
-        .parseClaimsJws(token)
-        .getBody();
-      checkArgument(claims.getId() != null, "Token id hasn't been found");
-      checkArgument(claims.getSubject() != null, "Token subject hasn't been found");
-      checkArgument(claims.getExpiration() != null, "Token expiration date hasn't been found");
-      checkArgument(claims.getIssuedAt() != null, "Token creation date hasn't been found");
-      return Optional.of(claims);
-    } catch (ExpiredJwtException | SignatureException e) {
-      LOG.trace("Token is expired or secret key has changed", e);
-      return Optional.empty();
-    } catch (Exception e) {
-      throw new InvalidTokenException(e);
-    }
-  }
-
-  String refresh(Claims token, int expirationTimeInSeconds){
-    long now = system2.now();
-    JwtBuilder jwtBuilder = Jwts.builder();
-    for (Map.Entry<String, Object> entry : token.entrySet()) {
-      jwtBuilder.claim(entry.getKey(), entry.getValue());
-    }
-    jwtBuilder.setExpiration(new Date(now + expirationTimeInSeconds * 1000))
-      .signWith(SIGNATURE_ALGORITHM, secretKey);
-    return jwtBuilder.compact();
   }
 
   @Override
@@ -122,21 +76,69 @@ public class JwtToken implements Startable {
       settings.setProperty(SECRET_KEY_PROPERTY, Base64.getEncoder().encodeToString(newSecretKey.getEncoded()));
       this.secretKey = newSecretKey;
     } else {
-      this.secretKey = decodeSecretKey(encodedKey);
+      this.secretKey = decodeSecretKeyProperty(encodedKey);
     }
+  }
+
+  String encode(JwtSession jwtSession) {
+    checkIsStarted();
+    long now = system2.now();
+    JwtBuilder jwtBuilder = Jwts.builder()
+      .setId(uuidFactory.create())
+      .setSubject(jwtSession.getUserLogin())
+      .setIssuer(ISSUER)
+      .setIssuedAt(new Date(now))
+      .setExpiration(new Date(now + jwtSession.getExpirationTimeInSeconds() * 1000))
+      .signWith(SIGNATURE_ALGORITHM, secretKey);
+    for (Map.Entry<String, Object> entry : jwtSession.getProperties().entrySet()) {
+      jwtBuilder.claim(entry.getKey(), entry.getValue());
+    }
+    return jwtBuilder.compact();
+  }
+
+  Optional<Claims> decode(String token) {
+    checkIsStarted();
+    try {
+      Claims claims = Jwts.parser()
+        .requireIssuer(ISSUER)
+        .setSigningKey(secretKey)
+        .parseClaimsJws(token)
+        .getBody();
+      requireNonNull(claims.getId(), "Token id hasn't been found");
+      requireNonNull(claims.getSubject(), "Token subject hasn't been found");
+      requireNonNull(claims.getExpiration(), "Token expiration date hasn't been found");
+      requireNonNull(claims.getIssuedAt(), "Token creation date hasn't been found");
+      return Optional.of(claims);
+    } catch (ExpiredJwtException | SignatureException e) {
+      return Optional.empty();
+    } catch (Exception e) {
+      throw new ForbiddenException(e.getMessage());
+    }
+  }
+
+  String refresh(Claims token, int expirationTimeInSeconds) {
+    checkIsStarted();
+    long now = system2.now();
+    JwtBuilder jwtBuilder = Jwts.builder();
+    for (Map.Entry<String, Object> entry : token.entrySet()) {
+      jwtBuilder.claim(entry.getKey(), entry.getValue());
+    }
+    jwtBuilder.setExpiration(new Date(now + expirationTimeInSeconds * 1000))
+      .signWith(SIGNATURE_ALGORITHM, secretKey);
+    return jwtBuilder.compact();
   }
 
   private static SecretKey generateSecretKey() {
-    try {
-      return KeyGenerator.getInstance(SIGNATURE_ALGORITHM.getJcaName()).generateKey();
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
-    }
+    return generateKey(SIGNATURE_ALGORITHM);
   }
 
-  private static SecretKey decodeSecretKey(String encodedKey) {
-    byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
+  private static SecretKey decodeSecretKeyProperty(String base64SecretKey) {
+    byte[] decodedKey = Base64.getDecoder().decode(base64SecretKey);
     return new SecretKeySpec(decodedKey, 0, decodedKey.length, SIGNATURE_ALGORITHM.getJcaName());
+  }
+
+  private void checkIsStarted() {
+    checkNotNull(secretKey, "%s not started", getClass().getName());
   }
 
   @Override
@@ -144,16 +146,21 @@ public class JwtToken implements Startable {
     secretKey = null;
   }
 
-  static class Jwt {
+  @Immutable
+  static class JwtSession {
 
     private final String userLogin;
     private final int expirationTimeInSeconds;
     private final Map<String, Object> properties;
 
-    Jwt(Builder builder) {
-      this.userLogin = builder.userLogin;
-      this.expirationTimeInSeconds = builder.expirationTimeInSeconds;
-      this.properties = builder.properties;
+    JwtSession(String userLogin, int expirationTimeInSeconds) {
+      this(userLogin, expirationTimeInSeconds, Collections.emptyMap());
+    }
+
+    JwtSession(String userLogin, int expirationTimeInSeconds, Map<String, Object> properties) {
+      this.userLogin = requireNonNull(userLogin, "User login cannot be null");
+      this.expirationTimeInSeconds = expirationTimeInSeconds;
+      this.properties = properties;
     }
 
     String getUserLogin() {
@@ -166,36 +173,6 @@ public class JwtToken implements Startable {
 
     Map<String, Object> getProperties() {
       return properties;
-    }
-
-    static Builder builder() {
-      return new Builder();
-    }
-
-    static class Builder {
-      private String userLogin;
-      private int expirationTimeInSeconds = 20 * 60;
-      private Map<String, Object> properties = new HashMap<>();
-
-      Builder setUserLogin(String userLogin) {
-        this.userLogin = userLogin;
-        return this;
-      }
-
-      Builder setExpirationTimeInSeconds(int expirationTimeInSeconds) {
-        this.expirationTimeInSeconds = expirationTimeInSeconds;
-        return this;
-      }
-
-      Builder addProperty(String key, Object value) {
-        this.properties.put(key, value);
-        return this;
-      }
-
-      Jwt build() {
-        checkNotNull(userLogin, "User login cannot be null");
-        return new Jwt(this);
-      }
     }
   }
 }

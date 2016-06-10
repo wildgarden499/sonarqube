@@ -39,10 +39,10 @@ public class ValidateJwtTokenFilter extends ServletFilter {
 
   private static final Logger LOG = Loggers.get(ValidateJwtTokenFilter.class);
 
-  private final JwtTokenUpdater jwtTokenUpdater;
+  private final JwtHttpHandler jwtHttpHandler;
 
-  public ValidateJwtTokenFilter(JwtTokenUpdater jwtTokenUpdater) {
-    this.jwtTokenUpdater = jwtTokenUpdater;
+  public ValidateJwtTokenFilter(JwtHttpHandler jwtHttpHandler) {
+    this.jwtHttpHandler = jwtHttpHandler;
   }
 
   @Override
@@ -56,11 +56,11 @@ public class ValidateJwtTokenFilter extends ServletFilter {
     HttpServletResponse response = (HttpServletResponse) servletResponse;
 
     try {
-      jwtTokenUpdater.validateJwtToken(request, response);
+      jwtHttpHandler.validateToken(request, response);
       chain.doFilter(request, response);
-    } catch (InvalidTokenException e) {
+    } catch (org.sonar.server.exceptions.ForbiddenException e) {
       LOG.debug("Invalid token", e.getMessage());
-      response.setStatus(403);
+      response.setStatus(e.httpCode());
     }
   }
 
