@@ -54,7 +54,6 @@ public class SearchMyProjectsAction implements ProjectsWsAction {
       .setResponseExample(getClass().getResource("search_my_projects-example.json"))
       .setSince("6.0")
       .setInternal(true)
-      .addPagingParams(100)
       .setHandler(this);
   }
 
