@@ -83,6 +83,7 @@ import org.sonar.db.version.v55.FeedRulesLongDateColumns;
 import org.sonar.db.version.v55.FeedRulesTypes;
 import org.sonar.db.version.v56.FixLengthOfIssuesMessageOnOracle;
 import org.sonar.db.version.v56.FixTypeOfRuleTypeOnMysql;
+import org.sonar.db.version.v60.RemoveUnusedMeasuresColumns;
 
 public class MigrationStepModule extends Module {
   @Override
@@ -165,6 +166,9 @@ public class MigrationStepModule extends Module {
 
       // 5.6
       FixTypeOfRuleTypeOnMysql.class,
-      FixLengthOfIssuesMessageOnOracle.class);
+      FixLengthOfIssuesMessageOnOracle.class,
+
+      // 6.0
+      RemoveUnusedMeasuresColumns.class);
   }
 }
