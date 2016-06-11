@@ -26,15 +26,14 @@ class Snapshot < ActiveRecord::Base
   belongs_to :parent_snapshot, :class_name => 'Snapshot', :foreign_key => 'parent_snapshot_id'
   belongs_to :root_snapshot, :class_name => 'Snapshot', :foreign_key => 'root_snapshot_id'
 
-  has_many :measures, :class_name => 'ProjectMeasure', :conditions => 'rule_id IS NULL AND person_id IS NULL'
-  has_many :rulemeasures, :class_name => 'ProjectMeasure', :conditions => 'rule_id IS NOT NULL AND person_id IS NULL', :include => 'rule'
-  has_many :person_measures, :class_name => 'ProjectMeasure', :conditions => 'rule_id IS NULL AND person_id IS NOT NULL'
+  has_many :measures, :class_name => 'ProjectMeasure', :conditions => 'person_id IS NULL'
+  has_many :person_measures, :class_name => 'ProjectMeasure', :conditions => 'person_id IS NOT NULL'
 
   has_many :events, :dependent => :destroy, :order => 'event_date DESC'
 
   STATUS_UNPROCESSED = 'U'
   STATUS_PROCESSED = 'P'
-  
+
   def created_at
     long_to_date(:created_at)
   end
@@ -188,22 +187,10 @@ class Snapshot < ActiveRecord::Base
   end
 
   def rule_measures(metrics=nil, rule=nil)
-    if metrics
-      metric_ids=[metrics].flatten.map { |metric| metric.id }
-    end
-    if metrics || rule
-      rulemeasures.select do |m|
-        (metric_ids.nil? || metric_ids.include?(m.metric_id)) && (rule.nil? || m.rule_id==rule.id)
-      end
-    else
-      rulemeasures
-    end
+    []
   end
 
   def rule_measure(metric, rule)
-    rulemeasures.each do |m|
-      return m if m.metric_id==metric.id && m.rule_id==rule.id
-    end
     nil
   end
 
